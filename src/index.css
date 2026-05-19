@@ -1,0 +1,110 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-paper-50 text-ink-300 font-sans antialiased;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+}
+
+@layer components {
+  .card-hover {
+    @apply transition-all duration-300 ease-out;
+  }
+  .card-hover:hover {
+    @apply -translate-y-1;
+    box-shadow: 0 8px 30px rgba(60, 50, 38, 0.08), 0 2px 8px rgba(60, 50, 38, 0.04);
+  }
+}
+
+/* Ink wash loading animation */
+@keyframes brushStroke {
+  0% {
+    clip-path: inset(0 100% 0 0);
+    opacity: 0;
+  }
+  40% {
+    opacity: 1;
+  }
+  100% {
+    clip-path: inset(0 0 0 0);
+    opacity: 0.6;
+  }
+}
+
+@keyframes inkBlot {
+  0% {
+    transform: scale(0);
+    opacity: 0.8;
+  }
+  50% {
+    opacity: 0.3;
+  }
+  100% {
+    transform: scale(2.5);
+    opacity: 0;
+  }
+}
+
+@keyframes floatUp {
+  0% {
+    transform: translateY(10px);
+    opacity: 0;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-10px);
+    opacity: 0;
+  }
+}
+
+.ink-blot {
+  animation: inkBlot 2.5s ease-out infinite;
+}
+
+.ink-blot-delay-1 {
+  animation-delay: 0.8s;
+}
+
+.ink-blot-delay-2 {
+  animation-delay: 1.6s;
+}
+
+.brush-stroke {
+  animation: brushStroke 3s ease-in-out infinite;
+}
+
+.float-text {
+  animation: floatUp 3s ease-in-out infinite;
+}
+
+/* Drag & drop zone */
+.drop-zone {
+  @apply border-2 border-dashed border-ink-50/40 rounded-xl transition-colors duration-200;
+}
+.drop-zone.active {
+  @apply border-amber bg-amber/5;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  @apply bg-ink-50/20 rounded-full;
+}
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-ink-50/40;
+}
+
+/* Page transitions */
+.page-enter {
+  animation: fadeIn 0.3s ease-out, slideUp 0.3s ease-out;
+}
