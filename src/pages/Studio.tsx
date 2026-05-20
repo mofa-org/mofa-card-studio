@@ -33,7 +33,6 @@ export default function Studio() {
     })
   }, [styleId, navigate])
 
-  // elapsed timer
   useEffect(() => {
     if (phase === 'generating') {
       setElapsed(0)
@@ -42,7 +41,6 @@ export default function Studio() {
     return () => { if (timerRef.current) clearInterval(timerRef.current) }
   }, [phase])
 
-  // reference upload handling
   const handleRefFile = useCallback(async (file: File) => {
     setRefFile(file)
     setRefPreview(URL.createObjectURL(file))
@@ -64,7 +62,6 @@ export default function Studio() {
     setRefDesc(null)
   }
 
-  // drag & drop
   const [dragOver, setDragOver] = useState(false)
   const onDragOver = (e: React.DragEvent) => { e.preventDefault(); setDragOver(true) }
   const onDragLeave = () => setDragOver(false)
@@ -74,7 +71,6 @@ export default function Studio() {
     if (file?.type.startsWith('image/')) handleRefFile(file)
   }
 
-  // generate
   const handleGenerate = async () => {
     if (!style || !prompt.trim()) return
     setPhase('generating')
@@ -91,11 +87,11 @@ export default function Studio() {
         setResultFiles(result.files)
         setPhase('done')
       } else {
-        setErrorMsg(result.output || 'Generation failed')
+        setErrorMsg(result.output || '生成失败，请重试')
         setPhase('error')
       }
     } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : 'Unknown error')
+      setErrorMsg(err instanceof Error ? err.message : '未知错误')
       setPhase('error')
     }
   }
@@ -110,63 +106,65 @@ export default function Studio() {
   if (!style) return null
 
   const vis = getVisual(style.id)
+  const canGenerate = prompt.trim().length > 0
 
   return (
     <div className="min-h-screen page-enter">
       {phase === 'generating' && <InkLoader elapsed={elapsed} />}
 
       {/* Header bar */}
-      <header className="sticky top-0 z-10 bg-paper-50/80 backdrop-blur-md border-b border-ink-50/10">
-        <div className="max-w-5xl mx-auto px-6 py-3 flex items-center gap-4">
+      <header className="sticky top-0 z-10 bg-paper-50/80 backdrop-blur-md border-b border-ink-50/8">
+        <div className="max-w-5xl mx-auto px-6 py-3.5 flex items-center gap-4">
           <button
             onClick={() => navigate('/')}
-            className="text-ink-100 hover:text-ink-300 transition-colors text-sm flex items-center gap-1"
+            className="text-ink-100 hover:text-ink-300 transition-colors text-sm flex items-center gap-1.5 group"
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+              className="transition-transform group-hover:-translate-x-0.5">
               <path d="M19 12H5M12 19l-7-7 7-7" />
             </svg>
             画廊
           </button>
-          <div className="h-4 w-px bg-ink-50/20" />
+          <div className="h-4 w-px bg-ink-50/15" />
           <h1 className="font-serif text-lg font-semibold text-ink-300">
             {style.displayName}
           </h1>
-          <span className="text-sm text-ink-50">{style.description}</span>
+          <span className="text-sm text-ink-50 hidden sm:inline">{style.description}</span>
         </div>
       </header>
 
       <main className="max-w-5xl mx-auto px-6 py-8">
         {/* Done state — result view */}
         {phase === 'done' && resultFiles.length > 0 && (
-          <section className="mb-10 animate-fade-in">
+          <section className="mb-10">
             <div className="flex flex-col items-center">
               {resultFiles.map((url, i) => (
-                <div key={i} className="relative group">
+                <div key={i} className="relative group result-reveal cursor-pointer" onClick={() => handleDownload(url)}>
                   <img
                     src={url}
                     alt="Generated card"
-                    className="max-w-full max-h-[70vh] rounded-xl shadow-lg"
+                    className="max-w-full max-h-[70vh] rounded-2xl shadow-xl ring-1 ring-ink-50/10"
                   />
-                  <div className="absolute inset-0 flex items-end justify-center opacity-0 group-hover:opacity-100 transition-opacity pb-4">
-                    <button
-                      onClick={() => handleDownload(url)}
-                      className="px-6 py-2.5 rounded-full bg-ink-400/90 text-paper-50 text-sm font-medium shadow-lg backdrop-blur-sm hover:bg-ink-400 transition-colors"
-                    >
+                  <div className="absolute inset-0 flex items-center justify-center rounded-2xl opacity-0 group-hover:opacity-100 transition-all duration-300 bg-ink-400/10 backdrop-blur-[1px]">
+                    <div className="px-6 py-3 rounded-full bg-white/90 text-ink-300 text-sm font-medium shadow-lg flex items-center gap-2">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+                      </svg>
                       下载高清图
-                    </button>
+                    </div>
                   </div>
                 </div>
               ))}
-              <div className="flex gap-3 mt-6">
+              <div className="flex gap-3 mt-8">
                 <button
                   onClick={() => setPhase('idle')}
-                  className="px-5 py-2 rounded-full bg-paper-200 text-ink-200 text-sm hover:bg-paper-300 transition-colors"
+                  className="px-6 py-2.5 rounded-full bg-white/80 border border-ink-50/15 text-ink-200 text-sm font-medium hover:bg-white hover:border-ink-50/30 transition-all"
                 >
                   再来一张
                 </button>
                 <button
                   onClick={() => navigate('/')}
-                  className="px-5 py-2 rounded-full bg-paper-200 text-ink-200 text-sm hover:bg-paper-300 transition-colors"
+                  className="px-6 py-2.5 rounded-full bg-white/80 border border-ink-50/15 text-ink-200 text-sm font-medium hover:bg-white hover:border-ink-50/30 transition-all"
                 >
                   换个风格
                 </button>
@@ -177,26 +175,33 @@ export default function Studio() {
 
         {/* Error state */}
         {phase === 'error' && (
-          <div className="mb-8 p-4 rounded-xl bg-vermillion/5 border border-vermillion/20 text-vermillion text-sm animate-fade-in">
-            <p className="font-medium mb-1">生成失败</p>
-            <p className="text-vermillion/70">{errorMsg}</p>
-            <button
-              onClick={() => setPhase('idle')}
-              className="mt-3 text-sm underline hover:no-underline"
-            >
-              重试
-            </button>
+          <div className="mb-8 p-5 rounded-2xl bg-vermillion/5 border border-vermillion/15 animate-fade-in">
+            <div className="flex items-start gap-3">
+              <div className="w-8 h-8 rounded-full bg-vermillion/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                <span className="text-vermillion text-sm">!</span>
+              </div>
+              <div>
+                <p className="font-medium text-vermillion text-sm">生成失败</p>
+                <p className="text-vermillion/60 text-sm mt-1">{errorMsg}</p>
+                <button
+                  onClick={() => setPhase('idle')}
+                  className="mt-3 text-sm text-vermillion/80 hover:text-vermillion underline decoration-vermillion/30 hover:decoration-vermillion/60 transition-colors"
+                >
+                  返回重试
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
-        {/* Workspace — visible in idle/error states */}
+        {/* Workspace */}
         {(phase === 'idle' || phase === 'error') && (
-          <div className="grid lg:grid-cols-5 gap-8">
+          <div className="grid lg:grid-cols-5 gap-10">
             {/* Left column — controls */}
             <div className="lg:col-span-3 space-y-8">
               {/* Variant picker */}
               <section>
-                <h2 className="font-serif text-sm font-semibold text-ink-200 mb-3 uppercase tracking-wider">
+                <h2 className="text-xs font-semibold text-ink-50 mb-3 uppercase tracking-[0.15em]">
                   选择变体
                 </h2>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -209,15 +214,16 @@ export default function Studio() {
                         onClick={() => setVariant(v.name)}
                         className={`text-left p-3.5 rounded-xl border-2 transition-all duration-200 ${
                           isActive
-                            ? 'border-ink-300 bg-ink-400/5'
-                            : 'border-transparent bg-white/40 hover:bg-white/60 hover:border-ink-50/30'
+                            ? 'border-ink-300 bg-ink-400/5 variant-selected'
+                            : 'border-transparent bg-white/40 hover:bg-white/70 hover:border-ink-50/20'
                         }`}
                       >
                         <div className="flex items-center gap-2 mb-1">
                           <div
-                            className="w-2 h-2 rounded-full transition-colors"
+                            className="w-2 h-2 rounded-full transition-all duration-300"
                             style={{
                               backgroundColor: isActive ? vis.accent : '#D4C4A8',
+                              transform: isActive ? 'scale(1.3)' : 'scale(1)',
                             }}
                           />
                           <span className="font-serif font-semibold text-ink-300 text-sm">
@@ -225,7 +231,7 @@ export default function Studio() {
                           </span>
                         </div>
                         {vl.desc && (
-                          <p className="text-xs text-ink-50 leading-relaxed">
+                          <p className="text-xs text-ink-50 leading-relaxed pl-4">
                             {vl.desc}
                           </p>
                         )}
@@ -237,56 +243,64 @@ export default function Studio() {
 
               {/* Prompt input */}
               <section>
-                <h2 className="font-serif text-sm font-semibold text-ink-200 mb-3 uppercase tracking-wider">
+                <h2 className="text-xs font-semibold text-ink-50 mb-3 uppercase tracking-[0.15em]">
                   描述你想要的卡片
                 </h2>
                 <textarea
                   value={prompt}
                   onChange={e => setPrompt(e.target.value)}
-                  placeholder="例如：妈妈生日快乐，她喜欢养花，最近开始学画国画了"
+                  placeholder="例如：春天来了，桃花开满枝头，一个人在树下看书"
                   rows={4}
-                  className="w-full px-4 py-3 rounded-xl bg-white/50 border border-ink-50/15 text-ink-300 placeholder:text-ink-50/50 focus:outline-none focus:border-ink-200/40 focus:bg-white/70 transition-all resize-none text-[15px] leading-relaxed"
+                  className="w-full px-4 py-3.5 rounded-xl bg-white/50 border border-ink-50/12 text-ink-300 placeholder:text-ink-50/40 focus:outline-none focus:border-ink-200/30 focus:bg-white/80 transition-all resize-none text-[15px] leading-relaxed"
                 />
-                <p className="mt-1.5 text-xs text-ink-50/60">
-                  用自然语言描述，风格模板会自动融合
-                </p>
+                <div className="flex justify-between mt-2">
+                  <p className="text-xs text-ink-50/50">
+                    用自然语言描述，风格模板会自动融合
+                  </p>
+                  <p className="text-xs text-ink-50/40">
+                    {prompt.length > 0 && `${prompt.length} 字`}
+                  </p>
+                </div>
               </section>
 
               {/* Reference upload */}
               <section>
-                <h2 className="font-serif text-sm font-semibold text-ink-200 mb-3 uppercase tracking-wider">
+                <h2 className="text-xs font-semibold text-ink-50 mb-3 uppercase tracking-[0.15em]">
                   参考图片
-                  <span className="ml-2 font-normal text-ink-50 normal-case tracking-normal">
+                  <span className="ml-2 font-normal text-ink-50/60 normal-case tracking-normal">
                     可选
                   </span>
                 </h2>
 
                 {refFile ? (
-                  <div className="flex gap-4 items-start p-4 rounded-xl bg-white/40 border border-ink-50/10">
+                  <div className="flex gap-4 items-start p-4 rounded-xl bg-white/50 border border-ink-50/10 transition-all">
                     <img
                       src={refPreview!}
                       alt="Reference"
-                      className="w-20 h-20 object-cover rounded-lg"
+                      className="w-20 h-20 object-cover rounded-lg ring-1 ring-ink-50/10"
                     />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm text-ink-200 font-medium truncate">
                         {refFile.name}
                       </p>
                       {refAnalyzing ? (
-                        <p className="text-xs text-amber mt-1">分析中…</p>
+                        <div className="flex items-center gap-2 mt-2">
+                          <div className="w-3 h-3 rounded-full border-2 border-amber/50 border-t-amber animate-spin" />
+                          <p className="text-xs text-amber">AI 分析中…</p>
+                        </div>
                       ) : refDesc ? (
-                        <p className="text-xs text-ink-100 mt-1 leading-relaxed line-clamp-3">
+                        <p className="text-xs text-ink-100 mt-1.5 leading-relaxed line-clamp-3">
                           {refDesc}
                         </p>
                       ) : (
-                        <p className="text-xs text-ink-50 mt-1">
+                        <p className="text-xs text-ink-50 mt-1.5">
                           分析失败，将仅使用文字描述
                         </p>
                       )}
                     </div>
                     <button
                       onClick={clearRef}
-                      className="text-ink-50 hover:text-vermillion transition-colors text-lg leading-none"
+                      className="text-ink-50 hover:text-vermillion transition-colors w-7 h-7 flex items-center justify-center rounded-full hover:bg-vermillion/5"
                     >
                       ×
                     </button>
@@ -308,8 +322,12 @@ export default function Studio() {
                       input.click()
                     }}
                   >
-                    <div className="text-3xl mb-2 text-ink-50/30">🖼</div>
-                    <p className="text-sm text-ink-50">
+                    <div className="w-12 h-12 rounded-full bg-paper-200/60 flex items-center justify-center mx-auto mb-3">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-ink-50">
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>
+                      </svg>
+                    </div>
+                    <p className="text-sm text-ink-100">
                       拖入图片或点击上传
                     </p>
                     <p className="text-xs text-ink-50/50 mt-1">
@@ -322,22 +340,25 @@ export default function Studio() {
 
             {/* Right column — preview & action */}
             <div className="lg:col-span-2">
-              <div className="sticky top-20 space-y-6">
+              <div className="sticky top-16 space-y-6">
                 {/* Style preview */}
-                <div
-                  className="rounded-2xl overflow-hidden h-56 flex items-center justify-center"
-                  style={{ background: vis.gradient }}
-                >
-                  <span
-                    className="text-8xl font-serif opacity-15 select-none"
-                    style={{ color: vis.accent }}
-                  >
-                    {vis.icon}
-                  </span>
+                <div className="rounded-2xl overflow-hidden h-44 relative">
+                  <img
+                    src={`/api/preview/${style.id}`}
+                    alt={style.displayName}
+                    className="w-full h-full object-cover"
+                    onError={e => {
+                      (e.target as HTMLImageElement).style.display = 'none'
+                    }}
+                  />
+                  <div
+                    className="absolute inset-0 flex items-center justify-center"
+                    style={{ background: vis.gradient, mixBlendMode: 'multiply', opacity: 0.1 }}
+                  />
                 </div>
 
                 {/* Summary */}
-                <div className="space-y-3 text-sm">
+                <div className="space-y-3 text-sm px-1">
                   <div className="flex justify-between text-ink-100">
                     <span>风格</span>
                     <span className="text-ink-300 font-medium">{style.displayName}</span>
@@ -356,24 +377,28 @@ export default function Studio() {
                       </span>
                     </div>
                   )}
-                  <div className="h-px bg-ink-50/15" />
+                  <div className="h-px bg-gradient-to-r from-transparent via-ink-50/15 to-transparent" />
                 </div>
 
                 {/* Generate button */}
                 <button
                   onClick={handleGenerate}
-                  disabled={!prompt.trim()}
-                  className="w-full py-3.5 rounded-xl font-serif font-semibold text-base transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                  disabled={!canGenerate}
+                  className={`w-full py-4 rounded-xl font-serif font-semibold text-base transition-all duration-300 relative overflow-hidden ${
+                    canGenerate ? 'btn-breathe hover:brightness-110 active:scale-[0.98]' : ''
+                  } disabled:opacity-30 disabled:cursor-not-allowed`}
                   style={{
-                    backgroundColor: prompt.trim() ? vis.accent : undefined,
-                    color: prompt.trim() ? '#FFF8F0' : undefined,
+                    backgroundColor: canGenerate ? vis.accent : '#D4C4A8',
+                    color: '#FFF8F0',
                   }}
                 >
-                  开始创作
+                  <span className="relative z-10">
+                    {canGenerate ? '开始创作' : '请先输入描述'}
+                  </span>
                 </button>
 
-                <p className="text-xs text-ink-50/50 text-center">
-                  通常需要 10-20 秒，请耐心等待
+                <p className="text-xs text-ink-50/40 text-center">
+                  通常需要 15-30 秒
                 </p>
               </div>
             </div>

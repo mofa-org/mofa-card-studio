@@ -14,97 +14,124 @@
     @apply transition-all duration-300 ease-out;
   }
   .card-hover:hover {
-    @apply -translate-y-1;
-    box-shadow: 0 8px 30px rgba(60, 50, 38, 0.08), 0 2px 8px rgba(60, 50, 38, 0.04);
+    @apply -translate-y-1.5;
+    box-shadow: 0 12px 40px rgba(60, 50, 38, 0.10), 0 4px 12px rgba(60, 50, 38, 0.05);
   }
+  .card-hover:active {
+    @apply translate-y-0 scale-[0.98];
+    transition-duration: 100ms;
+  }
+}
+
+/* Staggered entrance for gallery cards */
+@keyframes cardEntrance {
+  0% { opacity: 0; transform: translateY(24px) scale(0.96); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+.card-entrance {
+  opacity: 0;
+  animation: cardEntrance 0.5s ease-out forwards;
+}
+
+/* Shimmer loading skeleton */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.shimmer {
+  background: linear-gradient(90deg, #f0ebe4 25%, #faf5ee 50%, #f0ebe4 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.8s ease-in-out infinite;
 }
 
 /* Ink wash loading animation */
-@keyframes brushStroke {
-  0% {
-    clip-path: inset(0 100% 0 0);
-    opacity: 0;
-  }
-  40% {
-    opacity: 1;
-  }
-  100% {
-    clip-path: inset(0 0 0 0);
-    opacity: 0.6;
-  }
-}
-
 @keyframes inkBlot {
-  0% {
-    transform: scale(0);
-    opacity: 0.8;
-  }
-  50% {
-    opacity: 0.3;
-  }
-  100% {
-    transform: scale(2.5);
-    opacity: 0;
-  }
+  0% { transform: scale(0); opacity: 0.8; }
+  50% { opacity: 0.3; }
+  100% { transform: scale(2.5); opacity: 0; }
 }
 
 @keyframes floatUp {
-  0% {
-    transform: translateY(10px);
-    opacity: 0;
-  }
-  50% {
-    opacity: 1;
-  }
-  100% {
-    transform: translateY(-10px);
-    opacity: 0;
-  }
+  0% { transform: translateY(10px); opacity: 0; }
+  50% { opacity: 1; }
+  100% { transform: translateY(-10px); opacity: 0; }
 }
 
-.ink-blot {
-  animation: inkBlot 2.5s ease-out infinite;
+@keyframes gentlePulse {
+  0%, 100% { opacity: 0.4; transform: scale(1); }
+  50% { opacity: 0.7; transform: scale(1.05); }
 }
 
-.ink-blot-delay-1 {
-  animation-delay: 0.8s;
+.ink-blot { animation: inkBlot 2.5s ease-out infinite; }
+.ink-blot-delay-1 { animation-delay: 0.8s; }
+.ink-blot-delay-2 { animation-delay: 1.6s; }
+.float-text { animation: floatUp 3s ease-in-out infinite; }
+
+/* Generate button breathing */
+@keyframes breathe {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(196, 149, 106, 0.3); }
+  50% { box-shadow: 0 0 0 8px rgba(196, 149, 106, 0); }
+}
+.btn-breathe {
+  animation: breathe 2.5s ease-in-out infinite;
 }
 
-.ink-blot-delay-2 {
-  animation-delay: 1.6s;
+/* Result reveal */
+@keyframes resultReveal {
+  0% { opacity: 0; transform: scale(0.92); filter: blur(8px); }
+  60% { filter: blur(0); }
+  100% { opacity: 1; transform: scale(1); filter: blur(0); }
 }
-
-.brush-stroke {
-  animation: brushStroke 3s ease-in-out infinite;
-}
-
-.float-text {
-  animation: floatUp 3s ease-in-out infinite;
+.result-reveal {
+  animation: resultReveal 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 /* Drag & drop zone */
 .drop-zone {
-  @apply border-2 border-dashed border-ink-50/40 rounded-xl transition-colors duration-200;
+  @apply border-2 border-dashed border-ink-50/30 rounded-xl transition-all duration-300;
+}
+.drop-zone:hover {
+  @apply border-ink-50/50 bg-paper-100/50;
 }
 .drop-zone.active {
-  @apply border-amber bg-amber/5;
+  @apply border-amber bg-amber/5 scale-[1.01];
+}
+
+/* Input focus glow */
+textarea:focus, input:focus {
+  box-shadow: 0 0 0 3px rgba(196, 149, 106, 0.1);
 }
 
 /* Scrollbar */
-::-webkit-scrollbar {
-  width: 6px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  @apply bg-ink-50/20 rounded-full;
-}
-::-webkit-scrollbar-thumb:hover {
-  @apply bg-ink-50/40;
-}
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { @apply bg-ink-50/20 rounded-full; }
+::-webkit-scrollbar-thumb:hover { @apply bg-ink-50/40; }
 
 /* Page transitions */
-.page-enter {
-  animation: fadeIn 0.3s ease-out, slideUp 0.3s ease-out;
+@keyframes pageIn {
+  0% { opacity: 0; transform: translateY(12px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+.page-enter { animation: pageIn 0.4s ease-out; }
+
+/* Category pill transitions */
+.pill-active {
+  @apply bg-ink-400 text-paper-50 shadow-sm;
+  box-shadow: 0 2px 8px rgba(44, 44, 44, 0.15);
+}
+
+/* Variant card selection */
+@keyframes selectPop {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.03); }
+  100% { transform: scale(1); }
+}
+.variant-selected {
+  animation: selectPop 0.25s ease-out;
+}
+
+/* Smooth image loading */
+.img-fade-in {
+  transition: opacity 0.4s ease-out;
 }
