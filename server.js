@@ -24,6 +24,28 @@ const PORT = parseInt(process.env.PORT || '3001', 10);
 fs.mkdirSync(OUTPUT_DIR, { recursive: true });
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
+// Auto-resolve OpenAI key from mofa config if not in env
+function resolveOpenAIKey() {
+  if (process.env.OPENAI_API_KEY) return process.env.OPENAI_API_KEY;
+  const candidates = [
+    path.join(path.dirname(MOFA_BIN), 'mofa', 'config.json'),
+    path.resolve(__dirname, 'mofa', 'config.json'),
+  ];
+  for (const p of candidates) {
+    try {
+      const cfg = JSON.parse(fs.readFileSync(p, 'utf-8'));
+      const val = cfg?.api_keys?.openai;
+      if (val && !val.startsWith('env:')) return val;
+      if (val?.startsWith('env:')) {
+        const envKey = val.slice(4);
+        if (process.env[envKey]) return process.env[envKey];
+      }
+    } catch { /* skip */ }
+  }
+  return null;
+}
+const OPENAI_KEY = resolveOpenAIKey();
+
 const upload = multer({
   dest: UPLOAD_DIR,
   limits: { fileSize: 10 * 1024 * 1024 },
@@ -75,14 +97,13 @@ app.post('/api/styles/reload', (_req, res) => {
 app.post('/api/analyze-reference', upload.single('image'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No image uploaded' });
 
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
+  if (!OPENAI_KEY) {
     fs.unlinkSync(req.file.path);
-    return res.status(500).json({ error: 'OPENAI_API_KEY not set' });
+    return res.status(500).json({ error: 'OpenAI API key not found in env or mofa config' });
   }
 
   try {
-    const openai = new OpenAI({ apiKey });
+    const openai = new OpenAI({ apiKey: OPENAI_KEY });
     const imageData = fs.readFileSync(req.file.path);
     const base64 = imageData.toString('base64');
     const mimeType = req.file.mimetype || 'image/png';
