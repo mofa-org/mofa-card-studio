@@ -4,3 +4,4 @@ output/
 uploads/
 .env
 *.local
+mofa/config.json

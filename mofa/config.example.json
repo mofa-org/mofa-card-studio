@@ -1,0 +1,7 @@
+{
+  "gen_model": "gpt-image-2",
+  "api_keys": {
+    "openai": "env:OPENAI_API_KEY",
+    "gemini": "env:GEMINI_API_KEY"
+  }
+}

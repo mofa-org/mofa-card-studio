@@ -15,8 +15,8 @@ app.use(express.json());
 
 const STYLES_DIR = process.env.STYLES_DIR
   ? path.resolve(process.env.STYLES_DIR)
-  : path.resolve(__dirname, '../mofa-skills/mofa-cards/styles');
-const MOFA_BIN = process.env.MOFA_BIN || path.resolve(__dirname, '../mofa-skills/mofa-cli/target/release/mofa');
+  : path.resolve(__dirname, 'styles');
+const MOFA_BIN = process.env.MOFA_BIN || 'mofa';
 const OUTPUT_DIR = path.resolve(__dirname, 'output');
 const UPLOAD_DIR = path.resolve(__dirname, 'uploads');
 const PORT = parseInt(process.env.PORT || '3001', 10);
