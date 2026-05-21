@@ -227,9 +227,16 @@ app.post('/api/transform', upload.single('image'), async (req, res) => {
       }
     }
 
+    const imageBuffer = fs.readFileSync(req.file.path);
+    const imageFile = new File(
+      [imageBuffer],
+      req.file.originalname || 'image.png',
+      { type: req.file.mimetype || 'image/png' }
+    );
+
     const response = await openai.images.edit({
       model: 'gpt-image-1',
-      image: fs.createReadStream(req.file.path),
+      image: imageFile,
       prompt: transformPrompt,
       n: 1,
       size: '1024x1024',
