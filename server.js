@@ -227,24 +227,18 @@ app.post('/api/transform', upload.single('image'), async (req, res) => {
       }
     }
 
-    const imageData = fs.readFileSync(req.file.path);
-    const base64Image = imageData.toString('base64');
-
-    const response = await openai.responses.create({
+    const response = await openai.images.edit({
       model: 'gpt-image-1',
-      input: [
-        { role: 'user', content: [
-          { type: 'input_image', image_url: `data:${req.file.mimetype || 'image/png'};base64,${base64Image}` },
-          { type: 'input_text', text: transformPrompt },
-        ]},
-      ],
-      tools: [{ type: 'image_generation', size: '1024x1024' }],
+      image: fs.createReadStream(req.file.path),
+      prompt: transformPrompt,
+      n: 1,
+      size: '1024x1024',
     });
 
-    const imageOutput = response.output.find(o => o.type === 'image_generation_call');
-    if (imageOutput?.result) {
+    const b64 = response.data?.[0]?.b64_json;
+    if (b64) {
       const outPath = path.join(jobDir, 'card-t.png');
-      fs.writeFileSync(outPath, Buffer.from(imageOutput.result, 'base64'));
+      fs.writeFileSync(outPath, Buffer.from(b64, 'base64'));
       res.json({
         jobId,
         success: true,
