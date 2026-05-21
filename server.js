@@ -195,6 +195,72 @@ app.post('/api/analyze-reference', upload.single('image'), async (req, res) => {
   }
 });
 
+// Image style transfer — sends actual image to OpenAI for transformation
+app.post('/api/transform', upload.single('image'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No image uploaded' });
+  if (!OPENAI_KEY) {
+    fs.unlinkSync(req.file.path);
+    return res.status(500).json({ error: 'OpenAI API key not found' });
+  }
+
+  const { prompt: userPrompt, style: styleName, variant: variantName, flexibility } = req.body;
+  if (!userPrompt) {
+    fs.unlinkSync(req.file.path);
+    return res.status(400).json({ error: 'prompt is required' });
+  }
+
+  const jobId = `job-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const jobDir = path.join(OUTPUT_DIR, jobId);
+  fs.mkdirSync(jobDir, { recursive: true });
+
+  try {
+    const openai = new OpenAI({ apiKey: OPENAI_KEY });
+
+    let transformPrompt = userPrompt;
+    if (styleName && variantName && flexibility !== 'creative') {
+      const stylePrompt = getVariantPrompt(styleName, variantName);
+      const styleMeta = getStyleMeta(styleName);
+      if (flexibility === 'strict' && stylePrompt) {
+        transformPrompt = `${stylePrompt}\n\nTransform the provided image according to the style above.\n\n${userPrompt}`;
+      } else {
+        transformPrompt = `Transform the provided image in the style of: ${styleMeta.display_name || styleMeta.name || ''} (${styleMeta.description || ''}).\n\n${userPrompt}`;
+      }
+    }
+
+    const imageData = fs.readFileSync(req.file.path);
+    const base64Image = imageData.toString('base64');
+
+    const response = await openai.responses.create({
+      model: 'gpt-image-1',
+      input: [
+        { role: 'user', content: [
+          { type: 'input_image', image_url: `data:${req.file.mimetype || 'image/png'};base64,${base64Image}` },
+          { type: 'input_text', text: transformPrompt },
+        ]},
+      ],
+      tools: [{ type: 'image_generation', size: '1024x1024' }],
+    });
+
+    const imageOutput = response.output.find(o => o.type === 'image_generation_call');
+    if (imageOutput?.result) {
+      const outPath = path.join(jobDir, 'card-t.png');
+      fs.writeFileSync(outPath, Buffer.from(imageOutput.result, 'base64'));
+      res.json({
+        jobId,
+        success: true,
+        output: 'Image transformed',
+        files: [`/api/cards/${jobId}/card-t.png`],
+      });
+    } else {
+      res.json({ jobId, success: false, output: 'No image generated', files: [] });
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message, jobId });
+  } finally {
+    fs.unlinkSync(req.file.path);
+  }
+});
+
 app.post('/api/generate', async (req, res) => {
   const {
     style, variant, prompt, referenceDescription,

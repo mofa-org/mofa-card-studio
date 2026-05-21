@@ -38,3 +38,24 @@ export async function generateCard(req: GenerateRequest): Promise<GenerateResult
   }
   return res.json();
 }
+
+export async function transformImage(
+  imageFile: File,
+  prompt: string,
+  style?: string,
+  variant?: string,
+  flexibility?: string,
+): Promise<GenerateResult> {
+  const form = new FormData();
+  form.append('image', imageFile);
+  form.append('prompt', prompt);
+  if (style) form.append('style', style);
+  if (variant) form.append('variant', variant);
+  if (flexibility) form.append('flexibility', flexibility);
+  const res = await fetch(`${BASE}/transform`, { method: 'POST', body: form });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Transform failed' }));
+    throw new Error(err.error);
+  }
+  return res.json();
+}

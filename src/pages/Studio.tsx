@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { fetchStyles, fetchStylePrompt, analyzeReference, generateCard } from '../api'
+import { fetchStyles, fetchStylePrompt, analyzeReference, generateCard, transformImage } from '../api'
 import type { CardStyle, GenerationPhase, FlexMode } from '../types'
 import { getVisual, getVariantLabel } from '../styleVisuals'
 import InkLoader from '../components/InkLoader'
@@ -26,6 +26,8 @@ export default function Studio() {
   const [showPromptEditor, setShowPromptEditor] = useState(false)
 
   // Reference
+  type RefMode = 'inspire' | 'transform';
+  const [refMode, setRefMode] = useState<RefMode>('inspire')
   const [refFile, setRefFile] = useState<File | null>(null)
   const [refPreview, setRefPreview] = useState<string | null>(null)
   const [refDesc, setRefDesc] = useState<string | null>(null)
@@ -68,16 +70,18 @@ export default function Studio() {
   const handleRefFile = useCallback(async (file: File) => {
     setRefFile(file)
     setRefPreview(URL.createObjectURL(file))
-    setRefAnalyzing(true)
-    try {
-      const analysis = await analyzeReference(file)
-      setRefDesc(analysis.description)
-    } catch {
-      setRefDesc(null)
-    } finally {
-      setRefAnalyzing(false)
+    if (refMode === 'inspire') {
+      setRefAnalyzing(true)
+      try {
+        const analysis = await analyzeReference(file)
+        setRefDesc(analysis.description)
+      } catch {
+        setRefDesc(null)
+      } finally {
+        setRefAnalyzing(false)
+      }
     }
-  }, [])
+  }, [refMode])
 
   const clearRef = () => {
     setRefFile(null)
@@ -101,14 +105,19 @@ export default function Studio() {
     setErrorMsg('')
     setResultFiles([])
     try {
-      const result = await generateCard({
-        style: style.id,
-        variant,
-        prompt: prompt.trim(),
-        referenceDescription: refDesc || undefined,
-        flexibility: flexMode,
-        customSystemPrompt: customPrompt || undefined,
-      })
+      let result;
+      if (refFile && refMode === 'transform') {
+        result = await transformImage(refFile, prompt.trim(), style.id, variant, flexMode)
+      } else {
+        result = await generateCard({
+          style: style.id,
+          variant,
+          prompt: prompt.trim(),
+          referenceDescription: refDesc || undefined,
+          flexibility: flexMode,
+          customSystemPrompt: customPrompt || undefined,
+        })
+      }
       if (result.success && result.files.length > 0) {
         setResultFiles(result.files)
         setPhase('done')
@@ -339,12 +348,35 @@ export default function Studio() {
                   <span className="ml-2 font-normal text-ink-50/60 normal-case tracking-normal">可选</span>
                 </h2>
 
+                {/* Ref mode toggle */}
+                <div className="flex gap-2 mb-3">
+                  {([
+                    { id: 'inspire' as const, label: '作为灵感', desc: 'AI 提取元素融入设计' },
+                    { id: 'transform' as const, label: '风格转换', desc: '直接转换这张图片' },
+                  ]).map(m => (
+                    <button key={m.id}
+                      onClick={() => { setRefMode(m.id); setRefDesc(null) }}
+                      className={`flex-1 py-2 px-3 rounded-lg text-center transition-all duration-200 border ${
+                        refMode === m.id
+                          ? 'border-ink-300 bg-ink-400/5'
+                          : 'border-transparent bg-white/30 hover:bg-white/50'
+                      }`}>
+                      <div className={`text-xs font-medium ${refMode === m.id ? 'text-ink-300' : 'text-ink-100'}`}>{m.label}</div>
+                      <div className="text-[10px] text-ink-50 mt-0.5">{m.desc}</div>
+                    </button>
+                  ))}
+                </div>
+
                 {refFile ? (
                   <div className="flex gap-4 items-start p-4 rounded-xl bg-white/50 border border-ink-50/10 transition-all">
                     <img src={refPreview!} alt="Reference" className="w-20 h-20 object-cover rounded-lg ring-1 ring-ink-50/10" />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm text-ink-200 font-medium truncate">{refFile.name}</p>
-                      {refAnalyzing ? (
+                      {refMode === 'transform' ? (
+                        <p className="text-xs text-ink-100 mt-1.5">
+                          将直接转换此图片 · 在上方描述你想要的风格
+                        </p>
+                      ) : refAnalyzing ? (
                         <div className="flex items-center gap-2 mt-2">
                           <div className="w-3 h-3 rounded-full border-2 border-amber/50 border-t-amber animate-spin" />
                           <p className="text-xs text-amber">AI 分析中…</p>
