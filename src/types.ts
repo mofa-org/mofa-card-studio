@@ -14,6 +14,8 @@ export interface CardStyle {
   variants: StyleVariant[];
 }
 
+export type FlexMode = 'strict' | 'balanced' | 'creative';
+
 export interface GenerateRequest {
   style: string;
   variant?: string;
@@ -21,6 +23,8 @@ export interface GenerateRequest {
   referenceDescription?: string;
   genModel?: string;
   imageSize?: string;
+  flexibility?: FlexMode;
+  customSystemPrompt?: string;
 }
 
 export interface GenerateResult {

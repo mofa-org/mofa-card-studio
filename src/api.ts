@@ -8,6 +8,13 @@ export async function fetchStyles(): Promise<CardStyle[]> {
   return res.json();
 }
 
+export async function fetchStylePrompt(styleId: string, variant: string): Promise<string> {
+  const res = await fetch(`${BASE}/style-prompt/${styleId}/${variant}`);
+  if (!res.ok) return '';
+  const data = await res.json();
+  return data.prompt || '';
+}
+
 export async function analyzeReference(file: File): Promise<ReferenceAnalysis> {
   const form = new FormData();
   form.append('image', file);

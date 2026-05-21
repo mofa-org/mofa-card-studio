@@ -24,7 +24,6 @@ const PORT = parseInt(process.env.PORT || '3001', 10);
 fs.mkdirSync(OUTPUT_DIR, { recursive: true });
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
-// Auto-resolve OpenAI key from mofa config if not in env
 function resolveOpenAIKey() {
   if (process.env.OPENAI_API_KEY) return process.env.OPENAI_API_KEY;
   const candidates = [
@@ -54,6 +53,32 @@ const upload = multer({
   },
 });
 
+// ── Style loading ──
+
+let parsedTomlCache = {};
+
+function getParsedToml(styleName) {
+  if (!parsedTomlCache[styleName]) {
+    const file = path.join(STYLES_DIR, `${styleName}.toml`);
+    parsedTomlCache[styleName] = toml.parse(fs.readFileSync(file, 'utf-8'));
+  }
+  return parsedTomlCache[styleName];
+}
+
+function getVariantPrompt(styleName, variantName) {
+  try {
+    const parsed = getParsedToml(styleName);
+    return parsed.variants?.[variantName]?.prompt || '';
+  } catch { return ''; }
+}
+
+function getStyleMeta(styleName) {
+  try {
+    const parsed = getParsedToml(styleName);
+    return parsed.meta || {};
+  } catch { return {}; }
+}
+
 function loadStyles() {
   const files = fs.readdirSync(STYLES_DIR).filter(f => f.endsWith('.toml'));
   return files.map(f => {
@@ -80,6 +105,40 @@ function loadStyles() {
 
 let cachedStyles = null;
 
+// ── Prompt construction with flexibility ──
+
+function extractTechSpecs(variantPrompt) {
+  const lines = variantPrompt.split('\n').slice(0, 2);
+  return lines.filter(l => /\d+[x×]\d+|pixel|format/i.test(l)).join('\n');
+}
+
+function buildPrompt({ stylePrompt, userPrompt, flexibility, referenceDesc, styleMeta }) {
+  let ref = referenceDesc ? `\n\n参考元素：${referenceDesc}` : '';
+  const techSpecs = extractTechSpecs(stylePrompt);
+
+  switch (flexibility) {
+    case 'strict':
+      return `${stylePrompt}\n\n${userPrompt}${ref}`;
+
+    case 'balanced':
+      return `${stylePrompt}\n\n` +
+        `---\n\n` +
+        `【用户创作要求】以下是用户的具体要求，请以此作为画面的核心主题和内容：\n` +
+        `${userPrompt}${ref}\n\n` +
+        `请在保持以上风格特征的同时，确保用户描述的场景、人物、情节是画面的主角。`;
+
+    case 'creative':
+      return `${techSpecs ? techSpecs + '\n\n' : ''}` +
+        `画面风格：${styleMeta.display_name || styleMeta.name || ''}（${styleMeta.description || ''}）\n\n` +
+        `${userPrompt}${ref}`;
+
+    default:
+      return `${stylePrompt}\n\n${userPrompt}${ref}`;
+  }
+}
+
+// ── API routes ──
+
 app.get('/api/styles', (_req, res) => {
   try {
     if (!cachedStyles) cachedStyles = loadStyles();
@@ -91,7 +150,14 @@ app.get('/api/styles', (_req, res) => {
 
 app.post('/api/styles/reload', (_req, res) => {
   cachedStyles = null;
+  parsedTomlCache = {};
   res.json({ ok: true });
+});
+
+app.get('/api/style-prompt/:styleId/:variant', (req, res) => {
+  const prompt = getVariantPrompt(req.params.styleId, req.params.variant);
+  if (!prompt) return res.status(404).json({ error: 'Variant not found' });
+  res.json({ prompt });
 });
 
 app.post('/api/analyze-reference', upload.single('image'), async (req, res) => {
@@ -99,7 +165,7 @@ app.post('/api/analyze-reference', upload.single('image'), async (req, res) => {
 
   if (!OPENAI_KEY) {
     fs.unlinkSync(req.file.path);
-    return res.status(500).json({ error: 'OpenAI API key not found in env or mofa config' });
+    return res.status(500).json({ error: 'OpenAI API key not found' });
   }
 
   try {
@@ -111,21 +177,13 @@ app.post('/api/analyze-reference', upload.single('image'), async (req, res) => {
     const response = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       max_tokens: 300,
-      messages: [
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'text',
-              text: '请用中文描述这张图片中可以用于贺卡设计的视觉元素：主要物体、颜色、构图、情感氛围。简洁地列出要点，不超过 150 字。',
-            },
-            {
-              type: 'image_url',
-              image_url: { url: `data:${mimeType};base64,${base64}` },
-            },
-          ],
-        },
-      ],
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'text', text: '请用中文描述这张图片中可以用于贺卡设计的视觉元素：主要物体、颜色、构图、情感氛围。简洁地列出要点，不超过 150 字。' },
+          { type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64}` } },
+        ],
+      }],
     });
 
     const description = response.choices[0]?.message?.content || '';
@@ -138,7 +196,10 @@ app.post('/api/analyze-reference', upload.single('image'), async (req, res) => {
 });
 
 app.post('/api/generate', async (req, res) => {
-  const { style, variant, prompt, referenceDescription, genModel, imageSize } = req.body;
+  const {
+    style, variant, prompt, referenceDescription,
+    genModel, imageSize, flexibility, customSystemPrompt,
+  } = req.body;
 
   if (!style || !prompt) {
     return res.status(400).json({ error: 'style and prompt are required' });
@@ -148,13 +209,21 @@ app.post('/api/generate', async (req, res) => {
   const jobDir = path.join(OUTPUT_DIR, jobId);
   fs.mkdirSync(jobDir, { recursive: true });
 
-  let fullPrompt = prompt;
-  if (referenceDescription) {
-    fullPrompt += `\n\n参考元素：${referenceDescription}`;
-  }
+  const mode = flexibility || 'balanced';
+  const stylePrompt = customSystemPrompt || getVariantPrompt(style, variant || 'front');
+  const styleMeta = getStyleMeta(style);
 
+  const fullPrompt = buildPrompt({
+    stylePrompt,
+    userPrompt: prompt,
+    flexibility: mode,
+    referenceDesc: referenceDescription,
+    styleMeta,
+  });
+
+  // Use '_bypass' variant so mofa doesn't prepend its own style prompt
   const input = {
-    cards: [{ name: 't', prompt: fullPrompt, style: variant || undefined }],
+    cards: [{ name: 't', prompt: fullPrompt, style: '_bypass' }],
     style,
     card_dir: jobDir,
     gen_model: genModel || 'gpt-image-2',
@@ -169,7 +238,7 @@ app.post('/api/generate', async (req, res) => {
 
     res.json({
       jobId,
-      success: result.success,
+      success: result.success && pngFiles.length > 0,
       output: result.output,
       files: pngFiles.map(f => `/api/cards/${jobId}/${f}`),
     });
@@ -218,14 +287,13 @@ function runMofa(input) {
         return reject(new Error(`mofa exited with code ${code}: ${stderr}`));
       }
       try {
-        // New mofa outputs multiple JSON lines (progress + result). Find the result line.
         const lines = stdout.trim().split('\n');
         let parsed = null;
         for (let i = lines.length - 1; i >= 0; i--) {
           try {
             const obj = JSON.parse(lines[i]);
             if ('success' in obj || 'output' in obj) { parsed = obj; break; }
-          } catch { /* skip non-JSON or progress lines */ }
+          } catch { /* skip */ }
         }
         if (!parsed) parsed = JSON.parse(lines[lines.length - 1]);
         resolve({
@@ -244,7 +312,6 @@ function runMofa(input) {
   });
 }
 
-// Serve static frontend in production
 const DIST = path.resolve(__dirname, 'dist');
 if (fs.existsSync(DIST)) {
   app.use(express.static(DIST));
@@ -258,4 +325,5 @@ app.listen(PORT, () => {
   console.log(`Card Studio on http://localhost:${PORT}`);
   console.log(`Styles: ${STYLES_DIR}`);
   console.log(`Mofa:   ${MOFA_BIN}`);
+  console.log(`OpenAI: ${OPENAI_KEY ? 'resolved' : 'NOT FOUND'}`);
 });

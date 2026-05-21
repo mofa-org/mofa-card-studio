@@ -1,9 +1,15 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { fetchStyles, analyzeReference, generateCard } from '../api'
-import type { CardStyle, GenerationPhase } from '../types'
+import { fetchStyles, fetchStylePrompt, analyzeReference, generateCard } from '../api'
+import type { CardStyle, GenerationPhase, FlexMode } from '../types'
 import { getVisual, getVariantLabel } from '../styleVisuals'
 import InkLoader from '../components/InkLoader'
+
+const FLEX_MODES: { id: FlexMode; label: string; desc: string }[] = [
+  { id: 'strict', label: '忠于风格', desc: '严格遵循模板风格' },
+  { id: 'balanced', label: '平衡', desc: '风格与内容并重' },
+  { id: 'creative', label: '自由创作', desc: '以你的描述为主' },
+]
 
 export default function Studio() {
   const { styleId } = useParams<{ styleId: string }>()
@@ -12,11 +18,20 @@ export default function Studio() {
   const [style, setStyle] = useState<CardStyle | null>(null)
   const [variant, setVariant] = useState<string>('')
   const [prompt, setPrompt] = useState('')
+  const [flexMode, setFlexMode] = useState<FlexMode>('balanced')
+
+  // System prompt
+  const [originalPrompt, setOriginalPrompt] = useState('')
+  const [customPrompt, setCustomPrompt] = useState<string | null>(null)
+  const [showPromptEditor, setShowPromptEditor] = useState(false)
+
+  // Reference
   const [refFile, setRefFile] = useState<File | null>(null)
   const [refPreview, setRefPreview] = useState<string | null>(null)
   const [refDesc, setRefDesc] = useState<string | null>(null)
   const [refAnalyzing, setRefAnalyzing] = useState(false)
 
+  // Generation
   const [phase, setPhase] = useState<GenerationPhase>('idle')
   const [elapsed, setElapsed] = useState(0)
   const [resultFiles, setResultFiles] = useState<string[]>([])
@@ -32,6 +47,15 @@ export default function Studio() {
       setVariant(found.defaultVariant)
     })
   }, [styleId, navigate])
+
+  // Load style prompt when style/variant changes
+  useEffect(() => {
+    if (!style || !variant) return
+    fetchStylePrompt(style.id, variant).then(p => {
+      setOriginalPrompt(p)
+      setCustomPrompt(null)
+    })
+  }, [style, variant])
 
   useEffect(() => {
     if (phase === 'generating') {
@@ -82,6 +106,8 @@ export default function Studio() {
         variant,
         prompt: prompt.trim(),
         referenceDescription: refDesc || undefined,
+        flexibility: flexMode,
+        customSystemPrompt: customPrompt || undefined,
       })
       if (result.success && result.files.length > 0) {
         setResultFiles(result.files)
@@ -107,6 +133,8 @@ export default function Studio() {
 
   const vis = getVisual(style.id)
   const canGenerate = prompt.trim().length > 0
+  const activeSystemPrompt = customPrompt ?? originalPrompt
+  const isCustomPrompt = customPrompt !== null
 
   return (
     <div className="min-h-screen page-enter">
@@ -134,17 +162,14 @@ export default function Studio() {
       </header>
 
       <main className="max-w-5xl mx-auto px-6 py-8">
-        {/* Done state — result view */}
+        {/* Done state */}
         {phase === 'done' && resultFiles.length > 0 && (
           <section className="mb-10">
             <div className="flex flex-col items-center">
               {resultFiles.map((url, i) => (
                 <div key={i} className="relative group result-reveal cursor-pointer" onClick={() => handleDownload(url)}>
-                  <img
-                    src={url}
-                    alt="Generated card"
-                    className="max-w-full max-h-[70vh] rounded-2xl shadow-xl ring-1 ring-ink-50/10"
-                  />
+                  <img src={url} alt="Generated card"
+                    className="max-w-full max-h-[70vh] rounded-2xl shadow-xl ring-1 ring-ink-50/10" />
                   <div className="absolute inset-0 flex items-center justify-center rounded-2xl opacity-0 group-hover:opacity-100 transition-all duration-300 bg-ink-400/10 backdrop-blur-[1px]">
                     <div className="px-6 py-3 rounded-full bg-white/90 text-ink-300 text-sm font-medium shadow-lg flex items-center gap-2">
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -156,16 +181,12 @@ export default function Studio() {
                 </div>
               ))}
               <div className="flex gap-3 mt-8">
-                <button
-                  onClick={() => setPhase('idle')}
-                  className="px-6 py-2.5 rounded-full bg-white/80 border border-ink-50/15 text-ink-200 text-sm font-medium hover:bg-white hover:border-ink-50/30 transition-all"
-                >
+                <button onClick={() => setPhase('idle')}
+                  className="px-6 py-2.5 rounded-full bg-white/80 border border-ink-50/15 text-ink-200 text-sm font-medium hover:bg-white hover:border-ink-50/30 transition-all">
                   再来一张
                 </button>
-                <button
-                  onClick={() => navigate('/')}
-                  className="px-6 py-2.5 rounded-full bg-white/80 border border-ink-50/15 text-ink-200 text-sm font-medium hover:bg-white hover:border-ink-50/30 transition-all"
-                >
+                <button onClick={() => navigate('/')}
+                  className="px-6 py-2.5 rounded-full bg-white/80 border border-ink-50/15 text-ink-200 text-sm font-medium hover:bg-white hover:border-ink-50/30 transition-all">
                   换个风格
                 </button>
               </div>
@@ -183,10 +204,8 @@ export default function Studio() {
               <div>
                 <p className="font-medium text-vermillion text-sm">生成失败</p>
                 <p className="text-vermillion/60 text-sm mt-1">{errorMsg}</p>
-                <button
-                  onClick={() => setPhase('idle')}
-                  className="mt-3 text-sm text-vermillion/80 hover:text-vermillion underline decoration-vermillion/30 hover:decoration-vermillion/60 transition-colors"
-                >
+                <button onClick={() => setPhase('idle')}
+                  className="mt-3 text-sm text-vermillion/80 hover:text-vermillion underline decoration-vermillion/30 transition-colors">
                   返回重试
                 </button>
               </div>
@@ -197,8 +216,8 @@ export default function Studio() {
         {/* Workspace */}
         {(phase === 'idle' || phase === 'error') && (
           <div className="grid lg:grid-cols-5 gap-10">
-            {/* Left column — controls */}
-            <div className="lg:col-span-3 space-y-8">
+            {/* Left column */}
+            <div className="lg:col-span-3 space-y-7">
               {/* Variant picker */}
               <section>
                 <h2 className="text-xs font-semibold text-ink-50 mb-3 uppercase tracking-[0.15em]">
@@ -209,32 +228,16 @@ export default function Studio() {
                     const vl = getVariantLabel(v.name)
                     const isActive = variant === v.name
                     return (
-                      <button
-                        key={v.name}
-                        onClick={() => setVariant(v.name)}
+                      <button key={v.name} onClick={() => setVariant(v.name)}
                         className={`text-left p-3.5 rounded-xl border-2 transition-all duration-200 ${
-                          isActive
-                            ? 'border-ink-300 bg-ink-400/5 variant-selected'
-                            : 'border-transparent bg-white/40 hover:bg-white/70 hover:border-ink-50/20'
-                        }`}
-                      >
+                          isActive ? 'border-ink-300 bg-ink-400/5 variant-selected' : 'border-transparent bg-white/40 hover:bg-white/70 hover:border-ink-50/20'
+                        }`}>
                         <div className="flex items-center gap-2 mb-1">
-                          <div
-                            className="w-2 h-2 rounded-full transition-all duration-300"
-                            style={{
-                              backgroundColor: isActive ? vis.accent : '#D4C4A8',
-                              transform: isActive ? 'scale(1.3)' : 'scale(1)',
-                            }}
-                          />
-                          <span className="font-serif font-semibold text-ink-300 text-sm">
-                            {vl.label}
-                          </span>
+                          <div className="w-2 h-2 rounded-full transition-all duration-300"
+                            style={{ backgroundColor: isActive ? vis.accent : '#D4C4A8', transform: isActive ? 'scale(1.3)' : 'scale(1)' }} />
+                          <span className="font-serif font-semibold text-ink-300 text-sm">{vl.label}</span>
                         </div>
-                        {vl.desc && (
-                          <p className="text-xs text-ink-50 leading-relaxed pl-4">
-                            {vl.desc}
-                          </p>
-                        )}
+                        {vl.desc && <p className="text-xs text-ink-50 leading-relaxed pl-4">{vl.desc}</p>}
                       </button>
                     )
                   })}
@@ -247,114 +250,145 @@ export default function Studio() {
                   描述你想要的卡片
                 </h2>
                 <textarea
-                  value={prompt}
-                  onChange={e => setPrompt(e.target.value)}
-                  placeholder="例如：春天来了，桃花开满枝头，一个人在树下看书"
+                  value={prompt} onChange={e => setPrompt(e.target.value)}
+                  placeholder="写上你想要的内容，越具体越好——场景、人物、情感、文字都可以"
                   rows={4}
                   className="w-full px-4 py-3.5 rounded-xl bg-white/50 border border-ink-50/12 text-ink-300 placeholder:text-ink-50/40 focus:outline-none focus:border-ink-200/30 focus:bg-white/80 transition-all resize-none text-[15px] leading-relaxed"
                 />
                 <div className="flex justify-between mt-2">
-                  <p className="text-xs text-ink-50/50">
-                    用自然语言描述，风格模板会自动融合
-                  </p>
-                  <p className="text-xs text-ink-50/40">
-                    {prompt.length > 0 && `${prompt.length} 字`}
-                  </p>
+                  <p className="text-xs text-ink-50/50">越具体模型越听话，简单几个字容易被模板主导</p>
+                  {prompt.length > 0 && <p className="text-xs text-ink-50/40">{prompt.length} 字</p>}
                 </div>
+              </section>
+
+              {/* Flexibility mode */}
+              <section>
+                <h2 className="text-xs font-semibold text-ink-50 mb-3 uppercase tracking-[0.15em]">
+                  创作模式
+                </h2>
+                <div className="flex gap-2">
+                  {FLEX_MODES.map(m => {
+                    const active = flexMode === m.id
+                    return (
+                      <button key={m.id}
+                        onClick={() => { setFlexMode(m.id); setCustomPrompt(null) }}
+                        className={`flex-1 py-3 px-3 rounded-xl text-center transition-all duration-200 border-2 ${
+                          active
+                            ? 'border-ink-300 bg-ink-400/5'
+                            : 'border-transparent bg-white/40 hover:bg-white/60'
+                        }`}>
+                        <div className={`text-sm font-medium transition-colors ${active ? 'text-ink-300' : 'text-ink-100'}`}>
+                          {m.label}
+                        </div>
+                        <div className="text-[11px] text-ink-50 mt-0.5">{m.desc}</div>
+                      </button>
+                    )
+                  })}
+                </div>
+              </section>
+
+              {/* System prompt editor (collapsible) */}
+              <section>
+                <button
+                  onClick={() => setShowPromptEditor(!showPromptEditor)}
+                  className="flex items-center gap-2 text-xs text-ink-50 hover:text-ink-200 transition-colors group"
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                    className={`transition-transform duration-200 ${showPromptEditor ? 'rotate-90' : ''}`}>
+                    <path d="M9 18l6-6-6-6"/>
+                  </svg>
+                  <span className="uppercase tracking-[0.15em] font-semibold">
+                    高级：系统提示词
+                  </span>
+                  {isCustomPrompt && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber/10 text-amber font-medium normal-case tracking-normal">
+                      已自定义
+                    </span>
+                  )}
+                </button>
+
+                {showPromptEditor && (
+                  <div className="mt-3 space-y-2 animate-fade-in">
+                    <textarea
+                      value={activeSystemPrompt}
+                      onChange={e => setCustomPrompt(e.target.value)}
+                      rows={8}
+                      className="w-full px-4 py-3 rounded-xl bg-white/30 border border-ink-50/10 text-ink-200 text-[13px] leading-relaxed focus:outline-none focus:border-ink-200/20 focus:bg-white/50 transition-all resize-y font-mono"
+                    />
+                    <div className="flex justify-between items-center">
+                      <p className="text-[11px] text-ink-50/50">
+                        编辑后将使用自定义提示词，切换创作模式可恢复
+                      </p>
+                      {isCustomPrompt && (
+                        <button
+                          onClick={() => setCustomPrompt(null)}
+                          className="text-[11px] text-ink-50 hover:text-ink-200 transition-colors underline"
+                        >
+                          恢复默认
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
               </section>
 
               {/* Reference upload */}
               <section>
                 <h2 className="text-xs font-semibold text-ink-50 mb-3 uppercase tracking-[0.15em]">
                   参考图片
-                  <span className="ml-2 font-normal text-ink-50/60 normal-case tracking-normal">
-                    可选
-                  </span>
+                  <span className="ml-2 font-normal text-ink-50/60 normal-case tracking-normal">可选</span>
                 </h2>
 
                 {refFile ? (
                   <div className="flex gap-4 items-start p-4 rounded-xl bg-white/50 border border-ink-50/10 transition-all">
-                    <img
-                      src={refPreview!}
-                      alt="Reference"
-                      className="w-20 h-20 object-cover rounded-lg ring-1 ring-ink-50/10"
-                    />
+                    <img src={refPreview!} alt="Reference" className="w-20 h-20 object-cover rounded-lg ring-1 ring-ink-50/10" />
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm text-ink-200 font-medium truncate">
-                        {refFile.name}
-                      </p>
+                      <p className="text-sm text-ink-200 font-medium truncate">{refFile.name}</p>
                       {refAnalyzing ? (
                         <div className="flex items-center gap-2 mt-2">
                           <div className="w-3 h-3 rounded-full border-2 border-amber/50 border-t-amber animate-spin" />
                           <p className="text-xs text-amber">AI 分析中…</p>
                         </div>
                       ) : refDesc ? (
-                        <p className="text-xs text-ink-100 mt-1.5 leading-relaxed line-clamp-3">
-                          {refDesc}
-                        </p>
+                        <p className="text-xs text-ink-100 mt-1.5 leading-relaxed line-clamp-3">{refDesc}</p>
                       ) : (
-                        <p className="text-xs text-ink-50 mt-1.5">
-                          分析失败，将仅使用文字描述
-                        </p>
+                        <p className="text-xs text-ink-50 mt-1.5">分析失败，将仅使用文字描述</p>
                       )}
                     </div>
-                    <button
-                      onClick={clearRef}
-                      className="text-ink-50 hover:text-vermillion transition-colors w-7 h-7 flex items-center justify-center rounded-full hover:bg-vermillion/5"
-                    >
+                    <button onClick={clearRef}
+                      className="text-ink-50 hover:text-vermillion transition-colors w-7 h-7 flex items-center justify-center rounded-full hover:bg-vermillion/5">
                       ×
                     </button>
                   </div>
                 ) : (
-                  <div
-                    ref={dropRef}
-                    onDragOver={onDragOver}
-                    onDragLeave={onDragLeave}
-                    onDrop={onDrop}
+                  <div ref={dropRef} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}
                     className={`drop-zone ${dragOver ? 'active' : ''} p-8 text-center cursor-pointer`}
                     onClick={() => {
                       const input = document.createElement('input')
-                      input.type = 'file'
-                      input.accept = 'image/*'
-                      input.onchange = () => {
-                        if (input.files?.[0]) handleRefFile(input.files[0])
-                      }
+                      input.type = 'file'; input.accept = 'image/*'
+                      input.onchange = () => { if (input.files?.[0]) handleRefFile(input.files[0]) }
                       input.click()
-                    }}
-                  >
+                    }}>
                     <div className="w-12 h-12 rounded-full bg-paper-200/60 flex items-center justify-center mx-auto mb-3">
                       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-ink-50">
                         <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>
                       </svg>
                     </div>
-                    <p className="text-sm text-ink-100">
-                      拖入图片或点击上传
-                    </p>
-                    <p className="text-xs text-ink-50/50 mt-1">
-                      AI 会提取参考元素融入卡片设计
-                    </p>
+                    <p className="text-sm text-ink-100">拖入图片或点击上传</p>
+                    <p className="text-xs text-ink-50/50 mt-1">AI 会提取参考元素融入卡片设计</p>
                   </div>
                 )}
               </section>
             </div>
 
-            {/* Right column — preview & action */}
+            {/* Right column */}
             <div className="lg:col-span-2">
               <div className="sticky top-16 space-y-6">
                 {/* Style preview */}
                 <div className="rounded-2xl overflow-hidden h-44 relative">
-                  <img
-                    src={`/api/preview/${style.id}`}
-                    alt={style.displayName}
+                  <img src={`/api/preview/${style.id}`} alt={style.displayName}
                     className="w-full h-full object-cover"
-                    onError={e => {
-                      (e.target as HTMLImageElement).style.display = 'none'
-                    }}
-                  />
-                  <div
-                    className="absolute inset-0 flex items-center justify-center"
-                    style={{ background: vis.gradient, mixBlendMode: 'multiply', opacity: 0.1 }}
-                  />
+                    onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
                 </div>
 
                 {/* Summary */}
@@ -365,41 +399,36 @@ export default function Studio() {
                   </div>
                   <div className="flex justify-between text-ink-100">
                     <span>变体</span>
+                    <span className="text-ink-300 font-medium">{getVariantLabel(variant).label}</span>
+                  </div>
+                  <div className="flex justify-between text-ink-100">
+                    <span>模式</span>
                     <span className="text-ink-300 font-medium">
-                      {getVariantLabel(variant).label}
+                      {FLEX_MODES.find(m => m.id === flexMode)?.label}
+                      {isCustomPrompt && ' (自定义)'}
                     </span>
                   </div>
                   {refFile && (
                     <div className="flex justify-between text-ink-100">
                       <span>参考</span>
-                      <span className="text-ink-300 font-medium truncate ml-4">
-                        {refFile.name}
-                      </span>
+                      <span className="text-ink-300 font-medium truncate ml-4">{refFile.name}</span>
                     </div>
                   )}
                   <div className="h-px bg-gradient-to-r from-transparent via-ink-50/15 to-transparent" />
                 </div>
 
                 {/* Generate button */}
-                <button
-                  onClick={handleGenerate}
-                  disabled={!canGenerate}
+                <button onClick={handleGenerate} disabled={!canGenerate}
                   className={`w-full py-4 rounded-xl font-serif font-semibold text-base transition-all duration-300 relative overflow-hidden ${
                     canGenerate ? 'btn-breathe hover:brightness-110 active:scale-[0.98]' : ''
                   } disabled:opacity-30 disabled:cursor-not-allowed`}
-                  style={{
-                    backgroundColor: canGenerate ? vis.accent : '#D4C4A8',
-                    color: '#FFF8F0',
-                  }}
-                >
+                  style={{ backgroundColor: canGenerate ? vis.accent : '#D4C4A8', color: '#FFF8F0' }}>
                   <span className="relative z-10">
                     {canGenerate ? '开始创作' : '请先输入描述'}
                   </span>
                 </button>
 
-                <p className="text-xs text-ink-50/40 text-center">
-                  通常需要 15-30 秒
-                </p>
+                <p className="text-xs text-ink-50/40 text-center">通常需要 15-30 秒</p>
               </div>
             </div>
           </div>
