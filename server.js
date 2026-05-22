@@ -26,6 +26,8 @@ app.post('/api/auth', (req, res) => {
 
 function authMiddleware(req, res, next) {
   if (req.path === '/api/auth') return next();
+  if (req.path.startsWith('/api/preview/')) return next();
+  if (req.path.startsWith('/api/cards/')) return next();
   if (req.path.startsWith('/api/')) {
     const token = req.headers['x-access-token'];
     if (!token) return res.status(401).json({ error: '请先输入访问码' });
