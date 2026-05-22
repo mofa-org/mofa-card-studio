@@ -13,6 +13,34 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+const ACCESS_CODE = process.env.ACCESS_CODE || 'mofa2026';
+
+app.post('/api/auth', (req, res) => {
+  const { code } = req.body;
+  if (code === ACCESS_CODE) {
+    res.json({ ok: true, token: Buffer.from(`${ACCESS_CODE}:${Date.now()}`).toString('base64') });
+  } else {
+    res.status(403).json({ error: '访问码错误' });
+  }
+});
+
+function authMiddleware(req, res, next) {
+  if (req.path === '/api/auth') return next();
+  if (req.path.startsWith('/api/')) {
+    const token = req.headers['x-access-token'];
+    if (!token) return res.status(401).json({ error: '请先输入访问码' });
+    try {
+      const decoded = Buffer.from(token, 'base64').toString();
+      if (!decoded.startsWith(ACCESS_CODE + ':')) return res.status(403).json({ error: '访问码无效' });
+    } catch {
+      return res.status(403).json({ error: '访问码无效' });
+    }
+    return next();
+  }
+  next();
+}
+app.use(authMiddleware);
+
 const STYLES_DIR = process.env.STYLES_DIR
   ? path.resolve(process.env.STYLES_DIR)
   : path.resolve(__dirname, 'styles');
