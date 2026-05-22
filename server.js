@@ -336,7 +336,7 @@ app.get('/api/preview/:styleId', (req, res) => {
   res.status(404).json({ error: 'No preview' });
 });
 
-function runMofa(input) {
+function runMofa(input, timeoutMs = 120000) {
   return new Promise((resolve, reject) => {
     const child = spawn(MOFA_BIN, ['mofa_cards'], {
       cwd: path.dirname(MOFA_BIN),
@@ -344,12 +344,18 @@ function runMofa(input) {
       stdio: ['pipe', 'pipe', 'pipe'],
     });
 
+    const timer = setTimeout(() => {
+      child.kill('SIGTERM');
+      reject(new Error('生成超时（120秒），请重试'));
+    }, timeoutMs);
+
     let stdout = '';
     let stderr = '';
     child.stdout.on('data', d => { stdout += d; });
     child.stderr.on('data', d => { stderr += d; });
 
     child.on('close', code => {
+      clearTimeout(timer);
       if (code !== 0) {
         return reject(new Error(`mofa exited with code ${code}: ${stderr}`));
       }

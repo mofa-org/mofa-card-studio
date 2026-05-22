@@ -17,8 +17,8 @@ export default function StyleCard({ style, index = 0 }: { style: CardStyle; inde
       className="card-hover card-entrance group text-left rounded-2xl overflow-hidden bg-white/70 backdrop-blur-sm border border-ink-50/5"
       style={{ animationDelay: `${index * 60}ms` }}
     >
-      {/* Visual preview area */}
-      <div className="relative h-48 overflow-hidden">
+      {/* Visual preview area — aspect-ratio locks height regardless of image dimensions */}
+      <div className="relative overflow-hidden" style={{ aspectRatio: '3/2' }}>
         {/* Shimmer skeleton */}
         {!imgLoaded && (
           <div
