@@ -14,11 +14,13 @@ async function parsePdf(filePath) {
   if (!pdfParseModule) return null;
   try {
     if (pdfParseModule.PDFParse) {
-      const parser = new pdfParseModule.PDFParse({});
-      await parser.load(filePath);
-      const text = await parser.getText();
+      const data = fs.readFileSync(filePath);
+      const parser = new pdfParseModule.PDFParse({ data });
+      await parser.load();
+      const textResult = await parser.getText();
       const info = await parser.getInfo();
-      return { text: text || '', numpages: info?.numPages || 0 };
+      const text = textResult?.text || (typeof textResult === 'string' ? textResult : '');
+      return { text, numpages: info?.total || 0 };
     }
     if (pdfParseModule.default) {
       const result = await pdfParseModule.default(fs.readFileSync(filePath));
