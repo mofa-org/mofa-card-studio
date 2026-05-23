@@ -7,6 +7,7 @@ import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
 import toml from 'toml';
 import OpenAI from 'openai';
+import pdfParse from 'pdf-parse';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -79,7 +80,7 @@ const upload = multer({
   dest: UPLOAD_DIR,
   limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
-    cb(null, /^image\//.test(file.mimetype));
+    cb(null, /^(image\/|application\/pdf)/.test(file.mimetype));
   },
 });
 
@@ -191,33 +192,51 @@ app.get('/api/style-prompt/:styleId/:variant', (req, res) => {
 });
 
 app.post('/api/analyze-reference', upload.single('image'), async (req, res) => {
-  if (!req.file) return res.status(400).json({ error: 'No image uploaded' });
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
   if (!OPENAI_KEY) {
     fs.unlinkSync(req.file.path);
     return res.status(500).json({ error: 'OpenAI API key not found' });
   }
 
+  const isPdf = req.file.mimetype === 'application/pdf';
+
   try {
     const openai = new OpenAI({ apiKey: OPENAI_KEY });
-    const imageData = fs.readFileSync(req.file.path);
-    const base64 = imageData.toString('base64');
-    const mimeType = req.file.mimetype || 'image/png';
+    let messages;
 
-    const response = await openai.chat.completions.create({
-      model: 'gpt-5.4-mini',
-      max_completion_tokens: 300,
-      messages: [{
+    if (isPdf) {
+      const pdfData = fs.readFileSync(req.file.path);
+      const pdf = await pdfParse(pdfData);
+      const textSnippet = pdf.text.slice(0, 2000);
+      const pageCount = pdf.numpages;
+
+      messages = [{
+        role: 'user',
+        content: `这是一份 PDF 文档（${pageCount} 页）的文字内容摘要，请提取其中适合用于贺卡/卡片设计的关键信息：主题、核心文案、情感基调、可视化元素建议。简洁列出要点，不超过 200 字。\n\n文档内容：\n${textSnippet}`,
+      }];
+    } else {
+      const imageData = fs.readFileSync(req.file.path);
+      const base64 = imageData.toString('base64');
+      const mimeType = req.file.mimetype || 'image/png';
+
+      messages = [{
         role: 'user',
         content: [
           { type: 'text', text: '请用中文描述这张图片中可以用于贺卡设计的视觉元素：主要物体、颜色、构图、情感氛围。简洁地列出要点，不超过 150 字。' },
           { type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64}` } },
         ],
-      }],
+      }];
+    }
+
+    const response = await openai.chat.completions.create({
+      model: 'gpt-5.4-mini',
+      max_completion_tokens: 400,
+      messages,
     });
 
     const description = response.choices[0]?.message?.content || '';
-    res.json({ description, fileName: req.file.originalname });
+    res.json({ description, fileName: req.file.originalname, type: isPdf ? 'pdf' : 'image' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   } finally {

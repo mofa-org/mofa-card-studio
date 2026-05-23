@@ -68,9 +68,10 @@ export default function Studio() {
   }, [phase])
 
   const handleRefFile = useCallback(async (file: File) => {
+    const isPdf = file.type === 'application/pdf'
     setRefFile(file)
-    setRefPreview(URL.createObjectURL(file))
-    if (refMode === 'inspire') {
+    setRefPreview(isPdf ? null : URL.createObjectURL(file))
+    if (refMode === 'inspire' || isPdf) {
       setRefAnalyzing(true)
       try {
         const analysis = await analyzeReference(file)
@@ -96,7 +97,7 @@ export default function Studio() {
   const onDrop = (e: React.DragEvent) => {
     e.preventDefault(); setDragOver(false)
     const file = e.dataTransfer.files[0]
-    if (file?.type.startsWith('image/')) handleRefFile(file)
+    if (file?.type.startsWith('image/') || file?.type === 'application/pdf') handleRefFile(file)
   }
 
   const handleGenerate = async () => {
@@ -369,7 +370,13 @@ export default function Studio() {
 
                 {refFile ? (
                   <div className="flex gap-4 items-start p-4 rounded-xl bg-white/50 border border-ink-50/10 transition-all">
-                    <img src={refPreview!} alt="Reference" className="w-20 h-20 object-cover rounded-lg ring-1 ring-ink-50/10" />
+                    {refPreview ? (
+                      <img src={refPreview} alt="Reference" className="w-20 h-20 object-cover rounded-lg ring-1 ring-ink-50/10" />
+                    ) : (
+                      <div className="w-20 h-20 rounded-lg ring-1 ring-ink-50/10 bg-vermillion/5 flex items-center justify-center">
+                        <span className="text-2xl">PDF</span>
+                      </div>
+                    )}
                     <div className="flex-1 min-w-0">
                       <p className="text-sm text-ink-200 font-medium truncate">{refFile.name}</p>
                       {refMode === 'transform' ? (
@@ -397,7 +404,7 @@ export default function Studio() {
                     className={`drop-zone ${dragOver ? 'active' : ''} p-8 text-center cursor-pointer`}
                     onClick={() => {
                       const input = document.createElement('input')
-                      input.type = 'file'; input.accept = 'image/*'
+                      input.type = 'file'; input.accept = 'image/*,.pdf'
                       input.onchange = () => { if (input.files?.[0]) handleRefFile(input.files[0]) }
                       input.click()
                     }}>
@@ -406,7 +413,7 @@ export default function Studio() {
                         <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>
                       </svg>
                     </div>
-                    <p className="text-sm text-ink-100">拖入图片或点击上传</p>
+                    <p className="text-sm text-ink-100">拖入图片/PDF 或点击上传</p>
                     <p className="text-xs text-ink-50/50 mt-1">AI 会提取参考元素融入卡片设计</p>
                   </div>
                 )}
