@@ -7,8 +7,22 @@ import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
 import toml from 'toml';
 import OpenAI from 'openai';
-let pdfParse = null;
-try { pdfParse = (await import('pdf-parse')).default; } catch { /* optional */ }
+let pdfParseModule = null;
+try { pdfParseModule = await import('pdf-parse'); } catch { /* optional */ }
+
+async function parsePdf(buffer) {
+  if (!pdfParseModule) return null;
+  if (pdfParseModule.PDFParse) {
+    const parser = new pdfParseModule.PDFParse();
+    const doc = await parser.loadPDF(buffer);
+    return { text: doc.text || '', numpages: doc.pages?.length || 0 };
+  }
+  if (pdfParseModule.default) {
+    const result = await pdfParseModule.default(buffer);
+    return { text: result.text || '', numpages: result.numpages || 0 };
+  }
+  return null;
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -207,12 +221,12 @@ app.post('/api/analyze-reference', upload.single('image'), async (req, res) => {
     let messages;
 
     if (isPdf) {
-      if (!pdfParse) {
+      const pdfData = fs.readFileSync(req.file.path);
+      const pdf = await parsePdf(pdfData);
+      if (!pdf) {
         fs.unlinkSync(req.file.path);
         return res.status(500).json({ error: 'PDF parsing not available on this server' });
       }
-      const pdfData = fs.readFileSync(req.file.path);
-      const pdf = await pdfParse(pdfData);
       const textSnippet = pdf.text.slice(0, 2000);
       const pageCount = pdf.numpages;
 
