@@ -10,24 +10,23 @@ import OpenAI from 'openai';
 let pdfParseModule = null;
 import('pdf-parse').then(m => { pdfParseModule = m; console.log('pdf-parse: loaded'); }).catch(() => { console.log('pdf-parse: not available'); });
 
-async function parsePdf(buffer) {
-  if (!pdfParseModule) { console.log('pdf: module not loaded'); return null; }
+async function parsePdf(filePath) {
+  if (!pdfParseModule) return null;
   try {
     if (pdfParseModule.PDFParse) {
       const parser = new pdfParseModule.PDFParse({});
-      await parser.load(buffer);
+      await parser.load(filePath);
       const text = await parser.getText();
       const info = await parser.getInfo();
       return { text: text || '', numpages: info?.numPages || 0 };
     }
     if (pdfParseModule.default) {
-      const result = await pdfParseModule.default(buffer);
+      const result = await pdfParseModule.default(fs.readFileSync(filePath));
       return { text: result.text || '', numpages: result.numpages || 0 };
     }
   } catch (e) {
     console.error('PDF parse error:', e.message);
   }
-  console.log('pdf: no matching API found, keys:', Object.keys(pdfParseModule).slice(0, 8));
   return null;
 }
 
@@ -228,8 +227,7 @@ app.post('/api/analyze-reference', upload.single('image'), async (req, res) => {
     let messages;
 
     if (isPdf) {
-      const pdfData = fs.readFileSync(req.file.path);
-      const pdf = await parsePdf(pdfData);
+      const pdf = await parsePdf(req.file.path);
       if (!pdf) {
         fs.unlinkSync(req.file.path);
         return res.status(500).json({ error: 'PDF parsing not available on this server' });
