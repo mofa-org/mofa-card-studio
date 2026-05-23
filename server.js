@@ -11,7 +11,7 @@ let pdfParseModule = null;
 import('pdf-parse').then(m => { pdfParseModule = m; console.log('pdf-parse: loaded'); }).catch(() => { console.log('pdf-parse: not available'); });
 
 async function parsePdf(buffer) {
-  if (!pdfParseModule) return null;
+  if (!pdfParseModule) { console.log('pdf: module not loaded'); return null; }
   try {
     if (pdfParseModule.PDFParse) {
       const parser = new pdfParseModule.PDFParse({});
@@ -27,6 +27,7 @@ async function parsePdf(buffer) {
   } catch (e) {
     console.error('PDF parse error:', e.message);
   }
+  console.log('pdf: no matching API found, keys:', Object.keys(pdfParseModule).slice(0, 8));
   return null;
 }
 
