@@ -8,7 +8,7 @@ import { spawn } from 'child_process';
 import toml from 'toml';
 import OpenAI from 'openai';
 let pdfParseModule = null;
-try { pdfParseModule = await import('pdf-parse'); } catch { /* optional */ }
+import('pdf-parse').then(m => { pdfParseModule = m; console.log('pdf-parse: loaded'); }).catch(() => { console.log('pdf-parse: not available'); });
 
 async function parsePdf(buffer) {
   if (!pdfParseModule) return null;
