@@ -7,7 +7,8 @@ import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
 import toml from 'toml';
 import OpenAI from 'openai';
-import pdfParse from 'pdf-parse';
+let pdfParse = null;
+try { pdfParse = (await import('pdf-parse')).default; } catch { /* optional */ }
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -206,6 +207,10 @@ app.post('/api/analyze-reference', upload.single('image'), async (req, res) => {
     let messages;
 
     if (isPdf) {
+      if (!pdfParse) {
+        fs.unlinkSync(req.file.path);
+        return res.status(500).json({ error: 'PDF parsing not available on this server' });
+      }
       const pdfData = fs.readFileSync(req.file.path);
       const pdf = await pdfParse(pdfData);
       const textSnippet = pdf.text.slice(0, 2000);
