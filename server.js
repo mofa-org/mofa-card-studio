@@ -206,7 +206,7 @@ app.post('/api/analyze-reference', upload.single('image'), async (req, res) => {
 
     const response = await openai.chat.completions.create({
       model: 'gpt-5.4-mini',
-      max_tokens: 300,
+      max_completion_tokens: 300,
       messages: [{
         role: 'user',
         content: [
