@@ -12,14 +12,20 @@ try { pdfParseModule = await import('pdf-parse'); } catch { /* optional */ }
 
 async function parsePdf(buffer) {
   if (!pdfParseModule) return null;
-  if (pdfParseModule.PDFParse) {
-    const parser = new pdfParseModule.PDFParse();
-    const doc = await parser.loadPDF(buffer);
-    return { text: doc.text || '', numpages: doc.pages?.length || 0 };
-  }
-  if (pdfParseModule.default) {
-    const result = await pdfParseModule.default(buffer);
-    return { text: result.text || '', numpages: result.numpages || 0 };
+  try {
+    if (pdfParseModule.PDFParse) {
+      const parser = new pdfParseModule.PDFParse({});
+      await parser.load(buffer);
+      const text = await parser.getText();
+      const info = await parser.getInfo();
+      return { text: text || '', numpages: info?.numPages || 0 };
+    }
+    if (pdfParseModule.default) {
+      const result = await pdfParseModule.default(buffer);
+      return { text: result.text || '', numpages: result.numpages || 0 };
+    }
+  } catch (e) {
+    console.error('PDF parse error:', e.message);
   }
   return null;
 }
