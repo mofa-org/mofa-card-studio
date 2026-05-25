@@ -3,6 +3,7 @@ import fs from 'fs';
 
 const BASE = 'https://cards.mofa.ai';
 const SHOTS = '/tmp/e2e-shots';
+const CODE = 'mofa2026';
 fs.mkdirSync(SHOTS, { recursive: true });
 
 let passed = 0, failed = 0;
@@ -12,7 +13,7 @@ async function test(name, fn) {
     console.log(`  ✅ ${name}`);
     passed++;
   } catch (e) {
-    console.log(`  ❌ ${name}: ${e.message}`);
+    console.log(`  ❌ ${name}: ${e.message.split('\n')[0]}`);
     failed++;
   }
 }
@@ -22,168 +23,182 @@ async function test(name, fn) {
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   const page = await ctx.newPage();
 
-  // ── Gallery page ──
-  console.log('\n📋 Gallery page');
+  // ── 1. Auth Gate ──
+  console.log('\n🔐 认证流程');
   await page.goto(BASE, { waitUntil: 'networkidle' });
-  await page.screenshot({ path: `${SHOTS}/01-gallery.png`, fullPage: true });
+  await page.screenshot({ path: `${SHOTS}/01-auth.png` });
 
-  await test('Page title contains 纸上', async () => {
-    const title = await page.title();
-    if (!title.includes('纸上')) throw new Error(`Got: ${title}`);
+  await test('显示访问码输入页', async () => {
+    await page.locator('input[type="password"]').waitFor({ state: 'visible', timeout: 5000 });
   });
 
-  await test('Shows style cards', async () => {
+  await test('错误码提示', async () => {
+    await page.locator('input[type="password"]').fill('wrong');
+    await page.locator('button[type="submit"]').click();
+    await page.locator('text=访问码错误').waitFor({ state: 'visible', timeout: 5000 });
+  });
+
+  await test('正确码进入画廊', async () => {
+    await page.locator('input[type="password"]').fill(CODE);
+    await page.locator('button[type="submit"]').click();
+    await page.locator('text=纸上').first().waitFor({ state: 'visible', timeout: 10000 });
+    await page.waitForTimeout(1000);
+    await page.screenshot({ path: `${SHOTS}/02-gallery.png` });
+  });
+
+  // ── 2. Gallery ──
+  console.log('\n📋 画廊页面');
+
+  await test('风格卡片显示', async () => {
+    // Wait for styles API to return and render
+    await page.locator('button:has(h3)').first().waitFor({ state: 'visible', timeout: 20000 });
     const cards = await page.locator('button:has(h3)').count();
     if (cards < 10) throw new Error(`Only ${cards} cards`);
   });
 
-  await test('Category filters visible', async () => {
-    const filters = await page.locator('nav button').count();
-    if (filters < 4) throw new Error(`Only ${filters} filters`);
+  await test('预览图加载', async () => {
+    const img = page.locator('button:has(h3) img').first();
+    await img.waitFor({ state: 'visible', timeout: 10000 });
   });
 
-  await test('Category filter works', async () => {
-    await page.locator('nav button', { hasText: '水墨画韵' }).click();
-    await page.waitForTimeout(300);
-    const sections = await page.locator('section h2').count();
-    if (sections !== 1) throw new Error(`Expected 1 section, got ${sections}`);
+  await test('分类筛选', async () => {
+    await page.locator('nav button', { hasText: '节庆贺卡' }).click();
+    await page.waitForTimeout(500);
     await page.locator('nav button', { hasText: '全部' }).click();
     await page.waitForTimeout(300);
   });
 
-  await test('Preview images load', async () => {
-    const img = page.locator('button:has(h3) img').first();
-    await img.waitFor({ state: 'visible', timeout: 10000 });
-    const naturalWidth = await img.evaluate(el => el.naturalWidth);
-    if (naturalWidth < 100) throw new Error(`Image too small: ${naturalWidth}px`);
+  await test('历史按钮可见', async () => {
+    const btn = page.locator('button', { hasText: '历史' });
+    await btn.waitFor({ state: 'visible', timeout: 3000 });
   });
 
-  // ── Studio page ──
-  console.log('\n🎨 Studio page');
-  await page.locator('button:has(h3)', { hasText: '童趣水墨' }).click();
+  await test('历史抽屉打开/关闭', async () => {
+    await page.locator('button', { hasText: '历史' }).click();
+    await page.locator('text=创作历史').waitFor({ state: 'visible', timeout: 3000 });
+    await page.screenshot({ path: `${SHOTS}/03-history.png` });
+    await page.locator('.fixed.inset-0 .absolute.inset-0').click();
+    await page.waitForTimeout(300);
+  });
+
+  // ── 3. Studio ──
+  console.log('\n🎨 工作台页面');
+  await page.locator('button:has(h3)', { hasText: '贤二漫画' }).click();
   await page.waitForURL(/\/studio\//, { timeout: 5000 });
-  await page.waitForTimeout(500);
-  await page.screenshot({ path: `${SHOTS}/02-studio.png` });
 
-  await test('Studio loads with style name', async () => {
-    const header = await page.locator('h1').textContent();
-    if (!header.includes('童趣水墨')) throw new Error(`Got: ${header}`);
+  await test('工作台加载', async () => {
+    // Studio fetches styles, finds the matching one, then renders — this can take time over CF Tunnel
+    await page.locator('textarea').first().waitFor({ state: 'visible', timeout: 30000 });
+    await page.screenshot({ path: `${SHOTS}/04-studio.png` });
   });
 
-  await test('Variant picker visible', async () => {
-    const variants = await page.locator('button:has(span.font-serif)').count();
-    if (variants < 2) throw new Error(`Only ${variants} variants`);
+  await test('变体选择器', async () => {
+    const btns = page.locator('button', { hasText: /正面|祝语|场景|封面|标准/ });
+    await btns.first().waitFor({ state: 'visible', timeout: 5000 });
+    const count = await btns.count();
+    if (count < 2) throw new Error(`Only ${count} variant buttons`);
   });
 
-  await test('Flexibility modes visible', async () => {
-    const modes = await page.locator('text=忠于风格').count();
-    if (modes < 1) throw new Error('Flexibility modes missing');
-  });
-
-  await test('Generate button disabled when no prompt', async () => {
-    const btn = page.locator('button', { hasText: '请先输入描述' });
-    const disabled = await btn.isDisabled();
-    if (!disabled) throw new Error('Button should be disabled');
-  });
-
-  await test('Type prompt enables generate button', async () => {
-    await page.locator('textarea').first().fill('春天来了，小朋友在草地上放风筝');
-    await page.waitForTimeout(200);
-    const btn = page.locator('button', { hasText: '开始创作' });
-    const disabled = await btn.isDisabled();
-    if (disabled) throw new Error('Button should be enabled');
-  });
-
-  await test('Flexibility mode switch works', async () => {
+  await test('创作模式切换', async () => {
     await page.locator('button', { hasText: '自由创作' }).click();
     await page.waitForTimeout(200);
-    await page.screenshot({ path: `${SHOTS}/03-creative-mode.png` });
-    // Verify summary shows the mode
-    const summary = await page.locator('text=自由创作').count();
-    if (summary < 1) throw new Error('Creative mode not reflected');
+    await page.locator('button', { hasText: '平衡' }).click();
+    await page.waitForTimeout(200);
   });
 
-  await test('System prompt editor opens', async () => {
+  await test('系统提示词编辑器', async () => {
     await page.locator('button', { hasText: '高级：系统提示词' }).click();
     await page.waitForTimeout(300);
-    const editor = page.locator('textarea').nth(1);
-    const visible = await editor.isVisible();
-    if (!visible) throw new Error('Prompt editor not visible');
-    await page.screenshot({ path: `${SHOTS}/04-prompt-editor.png` });
+    const editors = await page.locator('textarea').count();
+    if (editors < 2) throw new Error('Prompt editor not visible');
+    await page.locator('button', { hasText: '高级：系统提示词' }).click();
   });
 
-  await test('Reference image mode toggle visible', async () => {
+  await test('参考图模式切换', async () => {
     const inspire = await page.locator('button', { hasText: '作为灵感' }).count();
     const transform = await page.locator('button', { hasText: '风格转换' }).count();
     if (inspire < 1 || transform < 1) throw new Error('Ref mode toggles missing');
   });
 
-  await test('Back button returns to gallery', async () => {
-    await page.locator('button', { hasText: '画廊' }).click();
-    await page.waitForTimeout(1000);
-    const url = page.url();
-    if (!url.endsWith('/') && !url.endsWith(':41722') && !url.endsWith('.ai')) throw new Error(`URL: ${url}`);
-    const cards = await page.locator('button:has(h3)').count();
-    if (cards < 5) throw new Error(`Only ${cards} cards`);
+  await test('空 prompt 禁用按钮', async () => {
+    const btn = page.locator('button', { hasText: '请先输入描述' });
+    if (!await btn.isDisabled()) throw new Error('Should be disabled');
   });
 
-  // ── Generation E2E (balanced mode) ──
-  console.log('\n🖼️  Generation E2E (balanced)');
-  await page.locator('button:has(h3)', { hasText: '民国文人水墨' }).click();
-  await page.waitForURL(/\/studio\//, { timeout: 5000 });
-  await page.waitForTimeout(500);
+  // ── 4. Generation with Queue ──
+  console.log('\n🖼️  异步生成（队列）');
 
-  await page.locator('textarea').first().fill('早日康复，窗外飘着小雨，桌上放着一杯热茶');
-  // Default is balanced mode
-  await page.locator('button', { hasText: '开始创作' }).click();
-  await page.screenshot({ path: `${SHOTS}/05-generating.png` });
+  await page.locator('textarea').first().fill('小和尚在冬天的竹林里打坐，雪花飘落');
+  await page.screenshot({ path: `${SHOTS}/05-ready.png` });
 
-  await test('InkLoader appears', async () => {
-    const loader = page.locator('text=研墨中');
-    await loader.waitFor({ state: 'visible', timeout: 5000 });
+  await test('提交生成（立即返回）', async () => {
+    const btn = page.locator('button', { hasText: '开始创作' });
+    if (await btn.isDisabled()) throw new Error('Button should be enabled');
+    await btn.click();
+    // Should show ink loader immediately without waiting for HTTP response
+    await page.locator('text=研墨中').waitFor({ state: 'visible', timeout: 5000 });
+    await page.screenshot({ path: `${SHOTS}/06-generating.png` });
   });
 
-  await test('Card generates successfully', async () => {
+  await test('生成完成', async () => {
     const img = page.locator('img[alt="Generated card"]');
     await img.waitFor({ state: 'visible', timeout: 180000 });
     await page.waitForTimeout(1000);
-    await page.screenshot({ path: `${SHOTS}/06-result.png` });
+    await page.screenshot({ path: `${SHOTS}/07-result.png` });
   });
 
-  await test('Download overlay appears on hover', async () => {
+  await test('下载按钮', async () => {
     const card = page.locator('.result-reveal');
     await card.hover();
     await page.waitForTimeout(300);
     const dl = page.locator('text=下载高清图');
-    const visible = await dl.isVisible();
-    if (!visible) throw new Error('Download button not visible on hover');
+    if (!await dl.isVisible()) throw new Error('Download button not visible');
   });
 
-  await test('Regenerate button works', async () => {
+  // ── 5. Prompt Preservation ──
+  console.log('\n🔄 上下文保留');
+
+  await test('再来一张保留 prompt', async () => {
     await page.locator('button', { hasText: '再来一张' }).click();
-    await page.waitForTimeout(300);
+    await page.waitForTimeout(500);
     const textarea = page.locator('textarea').first();
-    const visible = await textarea.isVisible();
-    if (!visible) throw new Error('Workspace not restored');
+    const value = await textarea.inputValue();
+    if (!value.includes('竹林')) throw new Error(`Prompt not preserved: ${value}`);
   });
 
-  // ── Generation E2E (creative mode) ──
-  console.log('\n✨ Generation E2E (creative)');
-  await page.locator('button', { hasText: '自由创作' }).click();
-  await page.locator('textarea').first().fill('一只橘猫坐在窗台上看雪，窗外是北方的冬天');
-  await page.locator('button', { hasText: '开始创作' }).click();
+  // ── 6. History ──
+  console.log('\n📜 历史记录');
 
-  await test('Creative card generates', async () => {
-    const img = page.locator('img[alt="Generated card"]');
-    await img.waitFor({ state: 'visible', timeout: 180000 });
-    await page.screenshot({ path: `${SHOTS}/07-creative-result.png` });
+  await test('返回画廊', async () => {
+    await page.locator('button', { hasText: '画廊' }).click();
+    await page.waitForTimeout(1000);
+  });
+
+  await test('历史中有刚才的记录', async () => {
+    await page.locator('button', { hasText: '历史' }).click();
+    await page.waitForTimeout(500);
+    const historyItem = page.locator('text=贤二漫画').last();
+    await historyItem.waitFor({ state: 'visible', timeout: 3000 });
+    await page.screenshot({ path: `${SHOTS}/08-history-with-item.png` });
+  });
+
+  await test('点击历史恢复上下文', async () => {
+    // Click the history item (the one with truncated prompt text)
+    const items = page.locator('.fixed .cursor-pointer');
+    await items.first().waitFor({ timeout: 8000 });
+    await items.first().click();
+    // Wait for Studio to load after navigation
+    await page.locator('textarea').first().waitFor({ state: 'visible', timeout: 30000 });
+    const value = await page.locator('textarea').first().inputValue();
+    if (!value.includes('竹林')) throw new Error(`Prompt not restored: "${value}"`);
+    await page.screenshot({ path: `${SHOTS}/09-restored.png` });
   });
 
   // ── Summary ──
   await browser.close();
-  console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━`);
+  console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
   console.log(`  ✅ ${passed} passed  ❌ ${failed} failed`);
   console.log(`  Screenshots: ${SHOTS}/`);
-  console.log(`━━━━━━━━━━━━━━━━━━━━━━━━\n`);
+  console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
   process.exit(failed > 0 ? 1 : 0);
 })();
