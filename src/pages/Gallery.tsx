@@ -3,11 +3,13 @@ import { fetchStyles } from '../api'
 import type { CardStyle } from '../types'
 import { getCategoryLabel, getCategoryOrder } from '../styleVisuals'
 import StyleCard from '../components/StyleCard'
+import HistoryDrawer from '../components/HistoryDrawer'
 
 export default function Gallery() {
   const [styles, setStyles] = useState<CardStyle[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<string | null>(null)
+  const [historyOpen, setHistoryOpen] = useState(false)
 
   useEffect(() => {
     fetchStyles()
@@ -38,6 +40,18 @@ export default function Gallery() {
 
   return (
     <div className="min-h-screen page-enter">
+      {/* History button */}
+      <button
+        onClick={() => setHistoryOpen(true)}
+        className="fixed top-4 right-4 z-20 px-4 py-2 rounded-full bg-white/80 border border-ink-50/15 text-ink-200 text-sm font-medium hover:bg-white hover:border-ink-50/30 transition-all backdrop-blur-sm shadow-sm flex items-center gap-2"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <circle cx="12" cy="12" r="10"/><polyline points="12,6 12,12 16,14"/>
+        </svg>
+        历史
+      </button>
+      <HistoryDrawer open={historyOpen} onClose={() => setHistoryOpen(false)} />
+
       {/* Hero header */}
       <header className="pt-16 pb-12 text-center relative overflow-hidden">
         <div className="absolute inset-0 opacity-[0.03] pointer-events-none"

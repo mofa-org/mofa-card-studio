@@ -1,8 +1,9 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
-import { fetchStyles, fetchStylePrompt, analyzeReference, generateCard, transformImage } from '../api'
+import { useParams, useNavigate, useLocation } from 'react-router-dom'
+import { fetchStyles, fetchStylePrompt, analyzeReference, submitGenerate, submitTransform, watchJob, type JobStatus } from '../api'
 import type { CardStyle, GenerationPhase, FlexMode } from '../types'
 import { getVisual, getVariantLabel } from '../styleVisuals'
+import { saveToHistory, createThumbnail } from '../lib/history'
 import InkLoader from '../components/InkLoader'
 
 const FLEX_MODES: { id: FlexMode; label: string; desc: string }[] = [
@@ -14,11 +15,13 @@ const FLEX_MODES: { id: FlexMode; label: string; desc: string }[] = [
 export default function Studio() {
   const { styleId } = useParams<{ styleId: string }>()
   const navigate = useNavigate()
+  const location = useLocation()
+  const restored = (location.state || {}) as { restorePrompt?: string; restoreVariant?: string; restoreFlexibility?: string }
 
   const [style, setStyle] = useState<CardStyle | null>(null)
   const [variant, setVariant] = useState<string>('')
-  const [prompt, setPrompt] = useState('')
-  const [flexMode, setFlexMode] = useState<FlexMode>('balanced')
+  const [prompt, setPrompt] = useState(restored.restorePrompt || '')
+  const [flexMode, setFlexMode] = useState<FlexMode>((restored.restoreFlexibility as FlexMode) || 'balanced')
 
   // System prompt
   const [originalPrompt, setOriginalPrompt] = useState('')
@@ -46,7 +49,7 @@ export default function Studio() {
       const found = styles.find(s => s.id === styleId)
       if (!found) { navigate('/'); return }
       setStyle(found)
-      setVariant(found.defaultVariant)
+      setVariant(restored.restoreVariant || found.defaultVariant)
     })
   }, [styleId, navigate])
 
@@ -100,37 +103,54 @@ export default function Studio() {
     if (file?.type.startsWith('image/') || file?.type === 'application/pdf') handleRefFile(file)
   }
 
+  const stopWatchRef = useRef<(() => void) | null>(null)
+
   const handleGenerate = async () => {
     if (!style || !prompt.trim()) return
     setPhase('generating')
     setErrorMsg('')
     setResultFiles([])
+
     try {
-      let result;
+      let jobId: string;
       if (refFile && refMode === 'transform') {
-        result = await transformImage(refFile, prompt.trim(), style.id, variant, flexMode)
+        const resp = await submitTransform(refFile, prompt.trim(), style.id, variant, flexMode)
+        jobId = resp.jobId
       } else {
-        result = await generateCard({
-          style: style.id,
-          variant,
+        const resp = await submitGenerate({
+          style: style.id, variant,
           prompt: prompt.trim(),
           referenceDescription: refDesc || undefined,
           flexibility: flexMode,
           customSystemPrompt: customPrompt || undefined,
         })
+        jobId = resp.jobId
       }
-      if (result.success && result.files.length > 0) {
-        setResultFiles(result.files)
-        setPhase('done')
-      } else {
-        setErrorMsg(result.output || '生成失败，请重试')
-        setPhase('error')
-      }
+
+      stopWatchRef.current = watchJob(jobId, async (status: JobStatus) => {
+        if (status.status === 'done' && status.files.length > 0) {
+          setResultFiles(status.files)
+          setPhase('done')
+          // Save to history
+          const thumb = await createThumbnail(status.files[0]).catch(() => '')
+          saveToHistory({
+            jobId, style: style.id, styleName: style.displayName,
+            variant, prompt: prompt.trim(), flexibility: flexMode,
+            imageUrl: status.files[0], thumbnail: thumb,
+            createdAt: Date.now(),
+          }).catch(() => {})
+        } else if (status.status === 'error') {
+          setErrorMsg(status.error || '生成失败，请重试')
+          setPhase('error')
+        }
+      })
     } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : '未知错误')
+      setErrorMsg(err instanceof Error ? err.message : '提交失败')
       setPhase('error')
     }
   }
+
+  useEffect(() => { return () => { stopWatchRef.current?.() } }, [])
 
   const handleDownload = (url: string) => {
     const a = document.createElement('a')
